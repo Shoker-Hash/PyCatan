@@ -208,84 +208,143 @@ class Version1(BotInterface):
         return trade_offer
 
     def on_build_phase(self, board_instance):
-        # Juega año de la cosecha si le faltan 2 o 1 materiales para completar una construcción
-        # Juega construir carreteras si le da para camino más largo o con ello puede alcanzar un puerto (que no tenga)
         self.board = board_instance
+        board_data = self.board.get_board_data()
 
-        # Si tiene mano de cartas de desarrollo
-        if len(self.development_cards_hand.check_hand()):
-            # Mira todas las cartas
-            for i in range(0, len(self.development_cards_hand.check_hand())):
-                # Comprueba primero de que hay más de 2 carreteras disponibles para construirlas
-                road_possibilities = self.board.valid_road_nodes(self.id)
+        def get_longest_road_path(start_node, visited_nodes, current_length):
+            # Si el nodo actual ya fue visitado, se devuelve la longitud actual del camino
+            if start_node in visited_nodes:
+                return current_length
+            
+            # Se agrega el nodo actual al conjunto de nodos visitados
+            visited_nodes.add(start_node)
+            
+            # Inicializa la longitud máxima con la longitud actual
+            max_length = current_length
+            
+            # Itera sobre las carreteras del nodo actual
+            for road in board_data['nodes'][start_node]['roads']:
+                # Si la carretera pertenece al jugador y el nodo adyacente no ha sido visitado
+                if road['player_id'] == self.id and road['node_id'] not in visited_nodes:
+                    # Se realiza una llamada recursiva incrementando la longitud del camino
+                    length = get_longest_road_path(road['node_id'], visited_nodes.copy(), current_length + 1)
+                    # Se actualiza la longitud máxima si la nueva longitud es mayor
+                    max_length = max(max_length, length)
+            
+            # Devuelve la longitud máxima del camino encontrado
+            return max_length
 
-                # Si una es año de la cosecha o construir carreteras y hay al menos 2 carreteras disponibles a construir
-                if (self.development_cards_hand.hand[i].effect == DevelopmentCardConstants.YEAR_OF_PLENTY_EFFECT or
-                        (self.development_cards_hand.hand[i].effect == DevelopmentCardConstants.ROAD_BUILDING_EFFECT and
-                         len(road_possibilities) > 1)):
-                    # La juega
-                    return self.development_cards_hand.select_card_by_id(self.development_cards_hand.hand[i].id)
+        def valid_road_nodes_with_longest_path(player_id):
+            # Lista para almacenar nodos válidos para construir carreteras
+            valid_nodes = []
+            
+            # Itera sobre todos los nodos en el tablero
+            for node in board_data['nodes']:
+                # Itera sobre los nodos adyacentes de cada nodo
+                for adjacent_node_id in node['adjacent']:
+                    allowed_to_build = False
+                    
+                    # Comprueba si el nodo adyacente pertenece al jugador o está libre
+                    if board_data['nodes'][adjacent_node_id]['player'] == player_id or board_data['nodes'][adjacent_node_id]['player'] == -1:
+                        # Itera sobre las carreteras del nodo adyacente
+                        for road in board_data['nodes'][adjacent_node_id]['roads']:
+                            # Si la carretera no es una carretera de vuelta
+                            if road['node_id'] != node['id']:
+                                # Si la carretera pertenece al jugador, se permite construir
+                                if road['player_id'] == player_id:
+                                    allowed_to_build = True
+                                else:
+                                    allowed_to_build = False
+                            # Si hay una carretera de vuelta, se prohíbe construir
+                            else:
+                                allowed_to_build = False
+                                break
+                    # Si se permite construir, se añade a la lista de nodos válidos
+                    if allowed_to_build:
+                        valid_nodes.append({'starting_node': adjacent_node_id, 'finishing_node': node['id']})
 
-        if self.hand.resources.has_this_more_materials(BuildConstants.CITY) and self.town_number > 0:
-            possibilities = self.board.valid_city_nodes(self.id)
-            for node_id in possibilities:
-                for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
-                    # Hacemos una ciudad solo si la probabilidad de que salga el número es mayor o igual a 4/36
-                    if self.board.terrain[terrain_piece_id]['probability'] == 5 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 6 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 8 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 9:
-                        self.town_number -= 1  # Transformamos un pueblo en una ciudad
-                        return {'building': BuildConstants.CITY, 'node_id': node_id}
+            best_road_option = None
+            longest_road_length = 0
+            
+            # Itera sobre los nodos válidos para construir carreteras
+            for road_obj in valid_nodes:
+                # Conjunto para almacenar nodos visitados
+                visited_nodes = set()
+                # Añade el nodo de inicio al conjunto de nodos visitados
+                visited_nodes.add(road_obj['starting_node'])
+                # Calcula la longitud del camino desde el nodo de inicio
+                path_length = get_longest_road_path(road_obj['finishing_node'], visited_nodes, 1)
+                # Si la longitud del camino es mayor que la longitud máxima encontrada, se actualiza
+                if path_length > longest_road_length:
+                    longest_road_length = path_length
+                    best_road_option = road_obj
 
-        if self.hand.resources.has_this_more_materials(BuildConstants.TOWN):
-            possibilities = self.board.valid_town_nodes(self.id)
-            for node_id in possibilities:
-                for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
-                    # Hacemos un pueblo solo si la probabilidad de que salga el número es mayor o igual a 3/36
-                    # O si el nodo es costero y posee un puerto
-                    if self.board.terrain[terrain_piece_id]['probability'] == 4 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 5 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 6 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 8 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 9 or \
-                            self.board.terrain[terrain_piece_id]['probability'] == 10:
-                        self.town_number += 1  # Añadimos un pueblo creado
-                        return {'building': BuildConstants.TOWN, 'node_id': node_id}
+            # Devuelve la mejor opción de carretera para extender el camino más largo
+            return best_road_option
 
-        if self.hand.resources.has_this_more_materials(BuildConstants.ROAD):
-            # Construye sí o sí carretera si acaba en un nodo costero, pero, ¿y si no lo busca aleatoriamente?
-            # Idealmente, debe de poder buscar caminos y encontrar el ideal a un puerto o similar, pero eso implicaría
-            #  programar un algoritmo de búsqueda de nodos por pesos que actualmente me parece imposible de hacer.
+        # Compra objetivo
+        compra_objetivo = self.compra_objetivo(turnoActual, board_instance)
 
-            # Comprobar qué caminos posibles hay para cada nodo. Escoger el más alto si el ID del nodo es 32 o más.
-            # Más bajo si es menor hacer override de eso si uno de los dos es directamente costero
+        if compra_objetivo == BuildConstants.TOWN:
+            if self.hand.resources.has_this_more_materials(BuildConstants.TOWN):
+                possibilities = self.board.valid_town_nodes(self.id)
+                for node_id in possibilities:
+                    for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
+                        if self.board.terrain[terrain_piece_id]['probability'] in [4, 5, 6, 8, 9, 10]:
+                            self.town_number += 1
+                            return {'building': BuildConstants.TOWN, 'node_id': node_id}
 
-            # TODO: Sería ideal que funcionase pero hay poco tiempo, que coja una aleatoria, pero si es costero y tiene puerto lo coge siempre
-            possibilities = self.board.valid_road_nodes(self.id)
-            for road_obj in possibilities:
-                if self.board.is_it_a_coastal_node(road_obj['finishing_node']) and \
-                        self.board.nodes[road_obj['finishing_node']]['harbor'] != HarborConstants.NONE:
+        elif compra_objetivo == BuildConstants.CITY:
+            if self.hand.resources.has_this_more_materials(BuildConstants.CITY) and self.town_number > 0:
+                possibilities = self.board.valid_city_nodes(self.id)
+                for node_id in possibilities:
+                    for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
+                        if self.board.terrain[terrain_piece_id]['probability'] in [5, 6, 8, 9]:
+                            self.town_number -= 1
+                            return {'building': BuildConstants.CITY, 'node_id': node_id}
+
+        elif compra_objetivo == BuildConstants.ROAD:
+            if self.hand.resources.has_this_more_materials(BuildConstants.ROAD):
+                best_road_option = valid_road_nodes_with_longest_path(self.id)
+                if best_road_option:
                     return {'building': BuildConstants.ROAD,
-                            'node_id': road_obj['starting_node'],
-                            'road_to': road_obj['finishing_node']}
+                            'node_id': best_road_option['starting_node'],
+                            'road_to': best_road_option['finishing_node']}
 
-            # Asumiendo que no hay ninguna ideal (es decir, robarse los puertos),
-            #   construye una carretera aleatoria, el 60% de las veces
-            will_build = random.randint(0, 2)
-            if will_build:
-                if len(possibilities):
-                    road_node = random.randint(0, len(possibilities) - 1)
+        elif compra_objetivo == BuildConstants.CARD:
+            if self.hand.resources.has_this_more_materials(BuildConstants.CARD):
+                return {'building': BuildConstants.CARD}
+
+        # Construir cualquier cosa si tiene más de 7 cartas
+        if self.hand.resources.total() > 7:
+            if self.hand.resources.has_this_more_materials(BuildConstants.CITY) and self.town_number > 0:
+                possibilities = self.board.valid_city_nodes(self.id)
+                for node_id in possibilities:
+                    for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
+                        if self.board.terrain[terrain_piece_id]['probability'] in [5, 6, 8, 9]:
+                            self.town_number -= 1
+                            return {'building': BuildConstants.CITY, 'node_id': node_id}
+
+            if self.hand.resources.has_this_more_materials(BuildConstants.TOWN):
+                possibilities = self.board.valid_town_nodes(self.id)
+                for node_id in possibilities:
+                    for terrain_piece_id in self.board.nodes[node_id]['contacting_terrain']:
+                        if self.board.terrain[terrain_piece_id]['probability'] in [4, 5, 6, 8, 9, 10]:
+                            self.town_number += 1
+                            return {'building': BuildConstants.TOWN, 'node_id': node_id}
+
+            if self.hand.resources.has_this_more_materials(BuildConstants.ROAD):
+                best_road_option = valid_road_nodes_with_longest_path(self.id)
+                if best_road_option:
                     return {'building': BuildConstants.ROAD,
-                            'node_id': possibilities[road_node]['starting_node'],
-                            'road_to': possibilities[road_node]['finishing_node']}
+                            'node_id': best_road_option['starting_node'],
+                            'road_to': best_road_option['finishing_node']}
 
-        # Si tiene materiales para hacer una carta, la construye. Como va la última en la pila,
-        #    ya habrá construido cualquier otra cosa más útil
-        if self.hand.resources.has_this_more_materials(BuildConstants.CARD):
-            return {'building': BuildConstants.CARD}
+            if self.hand.resources.has_this_more_materials(BuildConstants.CARD):
+                return {'building': BuildConstants.CARD}
 
         return None
+
 
     def on_game_start(self, board_instance): #VT version
 
