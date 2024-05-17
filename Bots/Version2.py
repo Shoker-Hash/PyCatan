@@ -26,10 +26,11 @@ class Version2(BotInterface):
     GustoPoblado = 1
     GustoCarretera = 1
     GustoDesarrollo = 1
-    timeChange = 0.29
-    importanciaTiempo = 1
+    timeChange = 0.4
+    importanciaTiempo = 10
     turnoActual = 0
     compraObjetivo = None
+    GustoMar = 1.5
     
     def __init__(self, bot_id):
         super().__init__(bot_id)
@@ -50,7 +51,9 @@ class Version2(BotInterface):
         # return super().on_trade_offer(incoming_trade_offer)
 
     def on_turn_start(self):
+        
         self.turnoActual = self.turnoActual+1
+        #print(str(self.turnoActual))
         # Si tiene mano de cartas de desarrollo
         if len(self.development_cards_hand.check_hand()) == 0:
             return None
@@ -326,9 +329,15 @@ class Version2(BotInterface):
     def on_build_phase(self, board_instance):
         # Juega año de la cosecha si le faltan 2 o 1 materiales para completar una construcción
         # Juega construir carreteras si le da para camino más largo o con ello puede alcanzar un puerto (que no tenga)
+        # Juega Monopoli si solo necesita un tipo de material
         self.board = board_instance
         self.compraObjetivo = self.compra_objetivo(self.board)
         #print(self.compraObjetivo)
+        total, materialesNecesarios = self.materialesNecesarios(self.compraObjetivo)
+        contadorMatDiferentesNecesarios = 0
+        for mat in materialesNecesarios.get_array_ids():
+           if mat != 0:
+               contadorMatDiferentesNecesarios = contadorMatDiferentesNecesarios +1
         # Si tiene mano de cartas de desarrollo
         if len(self.development_cards_hand.check_hand()):
             # Mira todas las cartas
@@ -337,91 +346,20 @@ class Version2(BotInterface):
                 road_possibilities = self.board.valid_road_nodes(self.id)
 
                 # Si una es año de la cosecha o construir carreteras y hay al menos 2 carreteras disponibles a construir
-                if self.development_cards_hand.hand[
-                    i
-                ].effect == DevelopmentCardConstants.YEAR_OF_PLENTY_EFFECT or (
-                    self.development_cards_hand.hand[i].effect
-                    == DevelopmentCardConstants.ROAD_BUILDING_EFFECT
-                    and len(road_possibilities) > 1
-                ):
+                if (self.development_cards_hand.hand[i].effect == DevelopmentCardConstants.YEAR_OF_PLENTY_EFFECT and total<3):
                     # La juega
-                    return self.development_cards_hand.select_card_by_id(
-                        self.development_cards_hand.hand[i].id
-                    )
-
-        if (
-            self.hand.resources.has_this_more_materials(BuildConstants.CITY)
-            and self.town_number > 0
-        ):
-            possibilities = self.board.valid_city_nodes(self.id)
-            for node_id in possibilities:
-                for terrain_piece_id in self.board.nodes[node_id]["contacting_terrain"]:
-                    # Hacemos una ciudad solo si la probabilidad de que salga el número es mayor o igual a 4/36
-                    if (
-                        self.board.terrain[terrain_piece_id]["probability"] == 5
-                        or self.board.terrain[terrain_piece_id]["probability"] == 6
-                        or self.board.terrain[terrain_piece_id]["probability"] == 8
-                        or self.board.terrain[terrain_piece_id]["probability"] == 9
-                    ):
-                        self.town_number -= 1  # Transformamos un pueblo en una ciudad
-                        return {"building": BuildConstants.CITY, "node_id": node_id}
-
-        if self.hand.resources.has_this_more_materials(BuildConstants.TOWN):
-            possibilities = self.board.valid_town_nodes(self.id)
-            for node_id in possibilities:
-                for terrain_piece_id in self.board.nodes[node_id]["contacting_terrain"]:
-                    # Hacemos un pueblo solo si la probabilidad de que salga el número es mayor o igual a 3/36
-                    # O si el nodo es costero y posee un puerto
-                    if (
-                        self.board.terrain[terrain_piece_id]["probability"] == 4
-                        or self.board.terrain[terrain_piece_id]["probability"] == 5
-                        or self.board.terrain[terrain_piece_id]["probability"] == 6
-                        or self.board.terrain[terrain_piece_id]["probability"] == 8
-                        or self.board.terrain[terrain_piece_id]["probability"] == 9
-                        or self.board.terrain[terrain_piece_id]["probability"] == 10
-                    ):
-                        self.town_number += 1  # Añadimos un pueblo creado
-                        return {"building": BuildConstants.TOWN, "node_id": node_id}
-
-        if self.hand.resources.has_this_more_materials(BuildConstants.ROAD):
-            # Construye sí o sí carretera si acaba en un nodo costero, pero, ¿y si no lo busca aleatoriamente?
-            # Idealmente, debe de poder buscar caminos y encontrar el ideal a un puerto o similar, pero eso implicaría
-            #  programar un algoritmo de búsqueda de nodos por pesos que actualmente me parece imposible de hacer.
-
-            # Comprobar qué caminos posibles hay para cada nodo. Escoger el más alto si el ID del nodo es 32 o más.
-            # Más bajo si es menor hacer override de eso si uno de los dos es directamente costero
-
-            # TODO: Sería ideal que funcionase pero hay poco tiempo, que coja una aleatoria, pero si es costero y tiene puerto lo coge siempre
-            possibilities = self.board.valid_road_nodes(self.id)
-            for road_obj in possibilities:
-                if (
-                    self.board.is_it_a_coastal_node(road_obj["finishing_node"])
-                    and self.board.nodes[road_obj["finishing_node"]]["harbor"]
-                    != HarborConstants.NONE
-                ):
-                    return {
-                        "building": BuildConstants.ROAD,
-                        "node_id": road_obj["starting_node"],
-                        "road_to": road_obj["finishing_node"],
-                    }
-
-            # Asumiendo que no hay ninguna ideal (es decir, robarse los puertos),
-            #   construye una carretera aleatoria, el 60% de las veces
-            will_build = random.randint(0, 2)
-            if will_build:
-                if len(possibilities):
-                    road_node = random.randint(0, len(possibilities) - 1)
-                    return {
-                        "building": BuildConstants.ROAD,
-                        "node_id": possibilities[road_node]["starting_node"],
-                        "road_to": possibilities[road_node]["finishing_node"],
-                    }
-
-        # Si tiene materiales para hacer una carta, la construye. Como va la última en la pila,
-        #    ya habrá construido cualquier otra cosa más útil
-        if self.hand.resources.has_this_more_materials(BuildConstants.CARD):
-            return {"building": BuildConstants.CARD}
-
+                    return self.development_cards_hand.select_card_by_id(self.development_cards_hand.hand[i].id)
+                if (self.development_cards_hand.hand[i].effect == DevelopmentCardConstants.ROAD_BUILDING_EFFECT and len(road_possibilities) > 1):
+                    return self.development_cards_hand.select_card_by_id(self.development_cards_hand.hand[i].id)
+                if (self.development_cards_hand.hand[i].effect == DevelopmentCardConstants.YEAR_OF_PLENTY_EFFECT and contadorMatDiferentesNecesarios==1):
+                   return self.development_cards_hand.select_card_by_id(self.development_cards_hand.hand[i].id)
+        
+        if total == 0:
+            return self.construyeCompraObjetivo()
+        
+        matActuales = sum(self.hand.resources.get_array_ids())
+        if matActuales > 6: 
+            return self.construyeSobras()
         return None
 
 
@@ -529,14 +467,23 @@ class Version2(BotInterface):
         else:
             return 0
 
-    def __nodeScore__(self, nodeArray, currentArray):
+    def __nodeScore__(self, node, nodeArray, currentArray, mode=BuildConstants.TOWN):
+        #Añadir self.board__get_harbors__(node) is not None: \ puntuaction = + algo Genetico?
         possible_array =  [x + y for x, y in zip(nodeArray, currentArray)]
         suma_total = sum(possible_array)
         desviacion_estandar = np.std(possible_array)
         puntuacion = suma_total - desviacion_estandar
+        harbor_type = self.board.__get_harbors__(node)
+        if (mode!=BuildConstants.CITY and harbor_type != HarborConstants.NONE  ):
+            if harbor_type<5:
+                puntuacion = puntuacion + currentArray[harbor_type]*2*self.GustoMar
+            else:
+            	puntuacion = puntuacion + suma_total*4/3*self.GustoMar
+        elif (mode==BuildConstants.ROAD and self.board.is_it_a_coastal_node(node)):
+            puntuacion = puntuacion + 5*self.GustoMar + 2*self.GustoPoblado
         return puntuacion
 
-    def __getBestScoreNode__(self, currentArray,nodes ):
+    def __getBestScoreNode__(self, currentArray,nodes ,mode=BuildConstants.TOWN):
         bestScore = 0
         bestNode = -1
         for node in nodes:
@@ -546,7 +493,7 @@ class Version2(BotInterface):
             for terrain in terrains:
                 terrainType = self.board.__get_terrain_type__(terrain)
                 arrayTypes[terrainType] = arrayTypes[terrainType] + self.__CalculateProb__(self.board.__get_probability__(terrain))
-            score = self.__nodeScore__(arrayTypes,currentArray)
+            score = self.__nodeScore__(node,arrayTypes,currentArray,mode)
             if score>bestScore:
                 bestScore = score
                 bestNode = node
@@ -597,8 +544,11 @@ class Version2(BotInterface):
         for coste in arrayCostes:
             if coste<0:
                 resultado = resultado + arrayBeneficios[i]/(-coste)
+            else:
+                resultado = resultado + arrayBeneficios[i]*3
             i = i+1
         return resultado
+
         
 
 
@@ -606,6 +556,8 @@ class Version2(BotInterface):
         #Variables Alg Genetico = GustoCiudad,GustoPoblado,GustoCarretera,GustoDesarrollo,timechange,timechange2,timechange3, importanciaTiempo
         townPossibilities = self.board.valid_town_nodes(self.id)
         cityPossibilities = self.board.valid_city_nodes(self.id)
+        #print("townPossibilities: "+str(townPossibilities)+" city: "+str(cityPossibilities))
+        #print("Time change diff "+ str(self.importanciaTiempo-min((self.turnoActual/(35*self.timeChange)*self.importanciaTiempo),self.importanciaTiempo*2)))
         materialesCiudad = self.hand.resources.has_this_more_materials(BuildConstants.CITY)
         Vt = self.__CR__(board.nodes)[self.id]
         if cityPossibilities and townPossibilities:
@@ -615,7 +567,8 @@ class Version2(BotInterface):
             arrayCostePueblo = arrayCostePueblo.get_array_ids()
             Cc = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
             Cp = self.calcula_BeneficiosCoste(arrayCostePueblo, Vt)
-            result = self.GustoCiudad * Cc   - self.GustoPoblado * Cp  -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
+            result = self.GustoCiudad * Cc   - self.GustoPoblado * Cp  -(self.importanciaTiempo-min((self.turnoActual/(35*self.timeChange)*self.importanciaTiempo),self.importanciaTiempo*2))
+            #print("CC"+str(Cc)+" CP"+str(Cp))
             if result>0:
                 return BuildConstants.CITY
             else: 
@@ -627,8 +580,8 @@ class Version2(BotInterface):
             arrayCostePueblo = arrayCostePueblo.get_array_ids()
             Cd = self.calcula_BeneficiosCoste(arrayCosteDesarrollo, Vt)
             Cp = self.calcula_BeneficiosCoste(arrayCostePueblo, Vt)
-            
-            result = self.GustoCiudad * Cd   - self.GustoPoblado * Cp  -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
+            #print("Cd"+str(Cd)+" CP"+str(Cp))
+            result = self.GustoCiudad * Cd   - self.GustoPoblado*2 * Cp  -(self.importanciaTiempo-min((self.turnoActual/(35*self.timeChange)*self.importanciaTiempo),self.importanciaTiempo*2))
             if result>0:
                 return BuildConstants.CARD
             else: 
@@ -643,7 +596,8 @@ class Version2(BotInterface):
             arrayCosteCarretera = arrayCosteCarretera.get_array_ids()
             Cc = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
             Cr = self.calcula_BeneficiosCoste(arrayCosteCarretera, Vt)
-            result = self.GustoCiudad * Cc   - self.GustoPoblado*Cr*carreteraConstruible -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
+            #print("CC"+str(Cc)+" Cr"+str(Cr))
+            result = self.GustoCiudad * Cc   - self.GustoPoblado*Cr*carreteraConstruible -(self.importanciaTiempo-min((self.turnoActual/(35*self.timeChange)*self.importanciaTiempo),self.importanciaTiempo*2))
             if result>0:
                 return BuildConstants.CITY
             else:
@@ -656,11 +610,73 @@ class Version2(BotInterface):
             Cr, arrayCosteCarretera = self.materialesNecesarios(BuildConstants.ROAD)
             arrayCosteDesarrollo = arrayCosteDesarrollo.get_array_ids()
             arrayCosteCarretera = arrayCosteCarretera.get_array_ids()
-            Cd = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
+            Cd = self.calcula_BeneficiosCoste(arrayCosteDesarrollo, Vt)
             Cr = self.calcula_BeneficiosCoste(arrayCosteCarretera, Vt)
             result = self.GustoCiudad * Cd   - self.GustoPoblado * Cr *carreteraConstruible
+            #print("Cd"+str(Cd)+" Cr"+str(Cr))
             if result>0:
                 return BuildConstants.CARD
             else:
                 return BuildConstants.ROAD
+                
         
+        
+    def construyeCompraObjetivo(self):
+        if self.compraObjetivo == BuildConstants.CARD:
+            return {'building': BuildConstants.CARD}
+        if self.compraObjetivo == BuildConstants.ROAD:
+            nodes = self.board.valid_road_nodes(self.id)
+            if len(nodes) == 0:
+                return None
+            node_id, road_to = self.mejorCarretera(nodes)
+            return {'building': BuildConstants.ROAD,
+                'node_id': node_id,
+                'road_to': road_to}
+        currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]
+        if self.compraObjetivo == BuildConstants.TOWN:
+            nodes = self.board.valid_town_nodes(self.id)
+            node_id = self.__getBestScoreNode__(currentArrayTerrain, nodes,BuildConstants.TOWN)
+            return {'building': BuildConstants.TOWN, 'node_id': node_id}
+        if self.compraObjetivo == BuildConstants.CITY:
+            nodes = self.board.valid_city_nodes(self.id)
+            node_id = self.__getBestScoreNode__(currentArrayTerrain, nodes, BuildConstants.CITY)
+            return {'building': BuildConstants.CITY, 'node_id': node_id}
+        return None
+            
+    def mejorCarretera(self, nodes):
+        currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]        
+        nodes_to = [diccionario['finishing_node'] for diccionario in nodes]
+        road_to = self.__getBestScoreNode__(currentArrayTerrain, nodes_to, BuildConstants.ROAD)
+        for diccionario in nodes:
+            if diccionario['finishing_node'] == road_to:
+                node_id = diccionario['starting_node']
+                break
+        return node_id, road_to
+
+
+    def construyeSobras(self):
+        if self.hand.resources.has_this_more_materials(BuildConstants.CARD) and self.compraObjetivo != BuildConstants.CITY:
+            return {'building': BuildConstants.CARD}
+        if self.hand.resources.has_this_more_materials(BuildConstants.ROAD):
+            nodes = self.board.valid_road_nodes(self.id)
+            if len(nodes) == 0:
+                return None
+            node_id, road_to = self.mejorCarretera(nodes)
+            return {'building': BuildConstants.ROAD,
+                'node_id': node_id,
+                'road_to': road_to}
+        
+        nodes = self.board.valid_town_nodes(self.id)
+        if len(nodes)>0:
+            currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]
+            node_id = self.__getBestScoreNode__(currentArrayTerrain, nodes,BuildConstants.TOWN)
+            return {'building': BuildConstants.TOWN, 'node_id': node_id}
+            
+        nodes = self.board.valid_city_nodes(self.id)
+        if len(nodes)>0:
+            currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]
+            node_id = self.__getBestScoreNode__(currentArrayTerrain, nodes, BuildConstants.CITY)
+            return {'building': BuildConstants.CITY, 'node_id': node_id}
+            
+        return None
+
