@@ -377,8 +377,8 @@ class Version2(BotInterface):
 
 
     def on_monopoly_card_use(self):
-        # Elige el material que más haya intercambiado (variable global de esta clase)
-        return self.material_given_more_than_three
+        total, materiales = self.materialesNecesarios(self.compraObjetivo)
+        return self.pick_needed_material(materiales)
 
     def update_hand_from_a_given_player_id(self, player_id: int, player_hand: Hand):
         self.player_hand_of_each_player[player_id] = player_hand
@@ -410,9 +410,15 @@ class Version2(BotInterface):
         return None
 
     def on_year_of_plenty_card_use(self):
+        total, materiales = self.materialesNecesarios(self.compraObjetivo)
+        materiales_pedidos = [self.year_of_plenty_material_one,self.year_of_plenty_material_two]
+        if total>1:
+            total = 2
+        for i in range(total):
+            materiales_pedidos[i] = self.pick_needed_material(materiales)
         return {
-            "material": self.year_of_plenty_material_one,
-            "material_2": self.year_of_plenty_material_two,
+            "material": materiales_pedidos[0],
+            "material_2": materiales_pedidos[1],
         }
 
     def __VT__(self, nodes):
@@ -680,3 +686,18 @@ class Version2(BotInterface):
             
         return None
 
+
+    def pick_needed_material(self, materiales):
+        needed_mat = [(i,-x) for i, x in enumerate(materiales.get_array_ids()) if x < 0]
+        currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]
+        result_i = 0
+        max_result = 0
+        score = 0
+        for i,x in needed_mat:
+            if currentArrayTerrain[i]==0:
+                continue
+            score = x/currentArrayTerrain[i]
+            if score>max_result:
+                max_result=score
+                result_i = i
+        return i
