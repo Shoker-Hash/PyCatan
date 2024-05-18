@@ -784,13 +784,13 @@ class GameManager:
         """
         if self.last_dice_roll == 7:
             for obj in self.bot_manager.players:
-                if obj['resources'].get_total() > 7:
-                    total = obj['player'].on_having_more_than_7_materials_when_thief_is_called().get_total()
+                total = obj['resources'].get_total()
+                if total > 7:
+                    new_hand = obj['player'].on_having_more_than_7_materials_when_thief_is_called()
                     max_hand = math.floor(total / 2)
 
-                    while total > max_hand:
-                        obj['resources'].remove_material(random.randint(0, 4), 1)
-                        total = obj['resources'].get_total()
+                    while new_hand.get_total() > max_hand:
+                        new_hand.remove_material(random.randint(0, 4), 1)
 
             on_moving_thief = self.bot_manager.players[player_id]['player'].on_moving_thief()
             move_thief_obj = self.move_thief(on_moving_thief['terrain'], on_moving_thief['player'])
