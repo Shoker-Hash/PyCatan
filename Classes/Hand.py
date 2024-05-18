@@ -6,9 +6,8 @@ class Hand:
     Clase que representa la mano de los jugadores
     """
 
-    def __init__(self):
-        self.resources = Materials()
-        return
+    def __init__(self, resources=Materials()):
+        self.resources = resources
 
     def add_material(self, resource, amount):
         """

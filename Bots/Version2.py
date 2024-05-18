@@ -108,7 +108,7 @@ class Version2(BotInterface):
         temp_hand = Hand(resources=materiales_necesarios)
         while self.hand.get_total() > 7:
             materiales_amount_with_idx = max(enumerate(temp_hand.resources.get_array_ids()), key=lambda x:x[1])
-            most_frequent_material_idx, most_frequent_material = materiales_amount_with_idx
+            most_frequent_material_idx, _ = materiales_amount_with_idx
             self.hand.remove_material(most_frequent_material_idx, 1)
             temp_hand.remove_material(most_frequent_material_idx, 1)
         return self.hand
