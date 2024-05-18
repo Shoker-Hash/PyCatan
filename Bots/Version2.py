@@ -30,7 +30,7 @@ class Version2(BotInterface):
     importanciaTiempo = 1
     turnoActual = 0
     compraObjetivo = BuildConstants.TOWN
-    
+
     def __init__(self, bot_id):
         super().__init__(bot_id)
 
@@ -50,13 +50,15 @@ class Version2(BotInterface):
         # return super().on_trade_offer(incoming_trade_offer)
 
     def on_turn_start(self):
-        self.turnoActual = self.turnoActual+1
+        self.turnoActual = self.turnoActual + 1
         # Si tiene mano de cartas de desarrollo
         if len(self.development_cards_hand.check_hand()) == 0:
             return None
 
-        knight_cards = self.development_cards_hand.select_cards_by_development_card_type(
-            DevelopmentCardConstants.KNIGHT_EFFECT
+        knight_cards = (
+            self.development_cards_hand.select_cards_by_development_card_type(
+                DevelopmentCardConstants.KNIGHT_EFFECT
+            )
         )
         progress_cards = (
             self.development_cards_hand.select_cards_by_development_card_type(
@@ -104,20 +106,35 @@ class Version2(BotInterface):
 
     def on_moving_thief(self):
         terrain_with_thief_id = -1
-        max_material_id, max_material = self.get_max_material_for_compra_objetivo(self.compraObjetivo)
-        players_hand_materials_with_probability = self.get_probability_for_materials_given_player_hands()
+        requested_material_id, requested_material = (
+            self.get_most_requested_material_for_compra_objetivo(self.compraObjetivo)
+        )
+        players_hand_materials_with_probability = (
+            self.get_probability_for_materials_given_player_hands()
+        )
 
-        #Crear una EDA dict {terrain_id:puntos}
-        #Sacar dnd más pueda putear
-        #Ver a quien puedo putear más
         eda = self.__VTE__()
-        terrain_with_thief_id, values_for_putting_thief_here = max(eda.items(), key=lambda x: x[1])
-        player_ids = list(filter(lambda x: x != self.id ,self.board.get_players_adjacent_to_terrain(terrain_with_thief_id)))
-
-
-        target_enemy_players = [(player_id, prob_for_card) for player_id, prob_for_card in players_hand_materials_with_probability.items() if player_id in player_ids]
-
-        target_enemy_player_id, _ = max(target_enemy_players, key=lambda x: x[1][max_material_id])
+        # get the one with the most resources
+        terrain_with_thief_id, values_for_putting_thief_here = max(
+            eda.items(), key=lambda x: x[1]
+        )
+        #Get all players ids adjacent to a terrain
+        player_ids = list(
+            filter(
+                lambda x: x != self.id,
+                self.board.get_players_adjacent_to_terrain(terrain_with_thief_id),
+            )
+        )
+        #List((int, list)) 
+        target_enemy_players = [
+            (player_id, prob_for_card)
+            for player_id, prob_for_card in players_hand_materials_with_probability.items()
+            if player_id in player_ids
+        ]
+        #Get the player with the most resources in that area
+        target_enemy_player_id, _ = max(
+            target_enemy_players, key=lambda x: x[1][requested_material_id]
+        )
         return {"terrain": terrain_with_thief_id, "player": target_enemy_player_id}
 
     def on_turn_end(self):
@@ -275,7 +292,7 @@ class Version2(BotInterface):
         # Juega construir carreteras si le da para camino más largo o con ello puede alcanzar un puerto (que no tenga)
         self.board = board_instance
         self.compraObjetivo = self.compra_objetivo(self.board)
-        #print(self.compraObjetivo)
+        # print(self.compraObjetivo)
         # Si tiene mano de cartas de desarrollo
         if len(self.development_cards_hand.check_hand()):
             # Mira todas las cartas
@@ -371,22 +388,26 @@ class Version2(BotInterface):
 
         return None
 
-
-    def on_game_start(self,  board_instance): #VT version
+    def on_game_start(self, board_instance):  # VT version
 
         # VT o VT+ o VTT+
         # Plantar en la casilla de más valor disponible
         self.board = board_instance
         possibilities = self.board.valid_starting_nodes()
         currentArrayTerrain = self.__CR__(self.board.nodes)[self.id]
-        bestNode = self.__getBestScoreNode__(currentArrayTerrain,possibilities)
-        possible_roads = self.board.nodes[bestNode]['adjacent']
-    
-        return bestNode, possible_roads[random.randint(0, len(possible_roads) - 1)]
+        bestNode = self.__getBestScoreNode__(currentArrayTerrain, possibilities)
+        possible_roads = self.board.nodes[bestNode]["adjacent"]
 
+        return bestNode, possible_roads[random.randint(0, len(possible_roads) - 1)]
 
     def on_monopoly_card_use(self):
         # Elige el material que más haya intercambiado (variable global de esta clase)
+        _, materiales = self.materialesNecesarios(self.compraObjetivo)
+
+        other_players_hands = {
+            k: v for k, v in self.player_hand_of_each_player.items() if k != self.id
+        }
+
         return self.material_given_more_than_three
 
     def update_hand_from_a_given_player_id(self, player_id: int, player_hand: Hand):
@@ -436,14 +457,15 @@ class Version2(BotInterface):
             dictNode[node] = nodeProb
         return dictNode
 
-
     def __VTE__(self):
         terrains = self.board.terrain
         res = {}
         for terrain in terrains:
-            prob_for_terrain = self.__CalculateProb__(self.board.__get_probability__(terrain["id"])) #get_prob * cal
+            prob_for_terrain = self.__CalculateProb__(
+                self.board.__get_probability__(terrain["id"])
+            )  # get_prob * cal
             val = 0
-            #Por cada nodo adjacente a un terreno
+            # Por cada nodo adjacente a un terreno
             node_ids_by_terrain_ids = self.board.__get_contacting_nodes__(terrain["id"])
             nodes = [self.board.get_nodes_by_id(id) for id in node_ids_by_terrain_ids]
             for node in nodes:
@@ -454,7 +476,7 @@ class Version2(BotInterface):
                     mult = 2
                 if node["player"] == self.id:
                     mult = -1 * mult
-                
+
                 val += mult * prob_for_terrain
             res[terrain["id"]] = val
         return res
@@ -463,65 +485,69 @@ class Version2(BotInterface):
         dictNode = {}
         for node in nodes:
             terrains = self.board.__get_contacting_terrain__(node)
-            nodeProb=0
-            arrayTypes = [0,0,0,0,0]
+            nodeProb = 0
+            arrayTypes = [0, 0, 0, 0, 0]
             for terrain in terrains:
                 terrainType = self.board.__get_terrain_type__(terrain)
-                arrayTypes[terrainType] = arrayTypes[terrainType] + self.__CalculateProb__(self.board.__get_probability__(terrain))
-            dictNode[node]=arrayTypes
+                arrayTypes[terrainType] = arrayTypes[
+                    terrainType
+                ] + self.__CalculateProb__(self.board.__get_probability__(terrain))
+            dictNode[node] = arrayTypes
         return dictNode
-       
+
     def __CR__(self, nodes):
-        arrayPlayer0 = [0,0,0,0,0]
-        arrayPlayer1 = [0,0,0,0,0]
-        arrayPlayer2 = [0,0,0,0,0]
-        arrayPlayer3 = [0,0,0,0,0]
-        playersArrays = [arrayPlayer0,arrayPlayer1,arrayPlayer2,arrayPlayer3]
+        arrayPlayer0 = [0, 0, 0, 0, 0]
+        arrayPlayer1 = [0, 0, 0, 0, 0]
+        arrayPlayer2 = [0, 0, 0, 0, 0]
+        arrayPlayer3 = [0, 0, 0, 0, 0]
+        playersArrays = [arrayPlayer0, arrayPlayer1, arrayPlayer2, arrayPlayer3]
         for node in nodes:
-            if node['player'] >= 0:
-                arrayPlayer = playersArrays[node['player']]
+            if node["player"] >= 0:
+                arrayPlayer = playersArrays[node["player"]]
                 terrains = self.board.__get_contacting_terrain__(node["id"])
-                nodeProb=0
-                arrayTypes = [0,0,0,0,0]
+                nodeProb = 0
+                arrayTypes = [0, 0, 0, 0, 0]
                 for terrain in terrains:
                     terrainType = self.board.__get_terrain_type__(terrain)
-                    arrayTypes[terrainType] = arrayTypes[terrainType] + self.__CalculateProb__(self.board.__get_probability__(terrain))
-                arrayPlayer=[x + y for x, y in zip(arrayTypes, arrayPlayer)]
-                playersArrays[node['player']] = arrayPlayer
+                    arrayTypes[terrainType] = arrayTypes[
+                        terrainType
+                    ] + self.__CalculateProb__(self.board.__get_probability__(terrain))
+                arrayPlayer = [x + y for x, y in zip(arrayTypes, arrayPlayer)]
+                playersArrays[node["player"]] = arrayPlayer
         return playersArrays
-        
-        
+
     def __CalculateProb__(self, node_number):
         if node_number == 0 or node_number == 7:
             return 0
-        if node_number>7:
-            return 13-node_number
-        elif node_number<7:
-            return node_number-1
+        if node_number > 7:
+            return 13 - node_number
+        elif node_number < 7:
+            return node_number - 1
 
     def __nodeScore__(self, nodeArray, currentArray):
-        possible_array =  [x + y for x, y in zip(nodeArray, currentArray)]
+        possible_array = [x + y for x, y in zip(nodeArray, currentArray)]
         suma_total = sum(possible_array)
         desviacion_estandar = np.std(possible_array)
         puntuacion = suma_total - desviacion_estandar
         return puntuacion
 
-    def __getBestScoreNode__(self, currentArray,nodes ):
+    def __getBestScoreNode__(self, currentArray, nodes):
         bestScore = 0
         bestNode = -1
         for node in nodes:
             terrains = self.board.__get_contacting_terrain__(node)
-            nodeProb=0
-            arrayTypes = [0,0,0,0,0]
+            nodeProb = 0
+            arrayTypes = [0, 0, 0, 0, 0]
             for terrain in terrains:
                 terrainType = self.board.__get_terrain_type__(terrain)
-                arrayTypes[terrainType] = arrayTypes[terrainType] + self.__CalculateProb__(self.board.__get_probability__(terrain))
-            score = self.__nodeScore__(arrayTypes,currentArray)
-            if score>bestScore:
+                arrayTypes[terrainType] = arrayTypes[
+                    terrainType
+                ] + self.__CalculateProb__(self.board.__get_probability__(terrain))
+            score = self.__nodeScore__(arrayTypes, currentArray)
+            if score > bestScore:
                 bestScore = score
                 bestNode = node
         return bestNode
-    
 
     def materialesNecesarios(self, buildConstant_type):
         """Dado un string, te indica los materiales que te faltan de cada tipo para
@@ -559,24 +585,23 @@ class Version2(BotInterface):
                 totalDiff = totalDiff + step
 
         return -totalDiff, Materials(diff[0], diff[1], diff[2], diff[3], diff[4])
-        
-        
-    def calcula_BeneficiosCoste(self,arrayCostes, arrayBeneficios):
+
+    def calcula_BeneficiosCoste(self, arrayCostes, arrayBeneficios):
         i = 0
         resultado = 0
         for coste in arrayCostes:
-            if coste<0:
-                resultado = resultado + arrayBeneficios[i]/(-coste)
-            i = i+1
+            if coste < 0:
+                resultado = resultado + arrayBeneficios[i] / (-coste)
+            i = i + 1
         return resultado
-        
-
 
     def compra_objetivo(self, board):
-        #Variables Alg Genetico = GustoCiudad,GustoPoblado,GustoCarretera,GustoDesarrollo,timechange,timechange2,timechange3, importanciaTiempo
+        # Variables Alg Genetico = GustoCiudad,GustoPoblado,GustoCarretera,GustoDesarrollo,timechange,timechange2,timechange3, importanciaTiempo
         townPossibilities = self.board.valid_town_nodes(self.id)
         cityPossibilities = self.board.valid_city_nodes(self.id)
-        materialesCiudad = self.hand.resources.has_this_more_materials(BuildConstants.CITY)
+        materialesCiudad = self.hand.resources.has_this_more_materials(
+            BuildConstants.CITY
+        )
         Vt = self.__CR__(board.nodes)[self.id]
         if cityPossibilities and townPossibilities:
             Cc, arrayCosteCiudad = self.materialesNecesarios(BuildConstants.CITY)
@@ -585,10 +610,15 @@ class Version2(BotInterface):
             arrayCostePueblo = arrayCostePueblo.get_array_ids()
             Cc = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
             Cp = self.calcula_BeneficiosCoste(arrayCostePueblo, Vt)
-            result = self.GustoCiudad * Cc   - self.GustoPoblado * Cp  -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
-            if result>0:
+            result = (
+                self.GustoCiudad * Cc
+                - self.GustoPoblado * Cp
+                - (1 - (self.turnoActual * 1 / 35 * self.timeChange))
+                * self.importanciaTiempo
+            )
+            if result > 0:
                 return BuildConstants.CITY
-            else: 
+            else:
                 return BuildConstants.TOWN
         elif townPossibilities:
             Cd, arrayCosteDesarrollo = self.materialesNecesarios(BuildConstants.CARD)
@@ -597,11 +627,16 @@ class Version2(BotInterface):
             arrayCostePueblo = arrayCostePueblo.get_array_ids()
             Cd = self.calcula_BeneficiosCoste(arrayCosteDesarrollo, Vt)
             Cp = self.calcula_BeneficiosCoste(arrayCostePueblo, Vt)
-            
-            result = self.GustoCiudad * Cd   - self.GustoPoblado * Cp  -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
-            if result>0:
+
+            result = (
+                self.GustoCiudad * Cd
+                - self.GustoPoblado * Cp
+                - (1 - (self.turnoActual * 1 / 35 * self.timeChange))
+                * self.importanciaTiempo
+            )
+            if result > 0:
                 return BuildConstants.CARD
-            else: 
+            else:
                 return BuildConstants.TOWN
         elif cityPossibilities:
             carreteraConstruible = 0
@@ -613,8 +648,13 @@ class Version2(BotInterface):
             arrayCosteCarretera = arrayCosteCarretera.get_array_ids()
             Cc = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
             Cr = self.calcula_BeneficiosCoste(arrayCosteCarretera, Vt)
-            result = self.GustoCiudad * Cc   - self.GustoPoblado*Cr*carreteraConstruible -( 1 - (self.turnoActual*1/35*self.timeChange) )*self.importanciaTiempo
-            if result>0:
+            result = (
+                self.GustoCiudad * Cc
+                - self.GustoPoblado * Cr * carreteraConstruible
+                - (1 - (self.turnoActual * 1 / 35 * self.timeChange))
+                * self.importanciaTiempo
+            )
+            if result > 0:
                 return BuildConstants.CITY
             else:
                 return BuildConstants.ROAD
@@ -628,25 +668,36 @@ class Version2(BotInterface):
             arrayCosteCarretera = arrayCosteCarretera.get_array_ids()
             Cd = self.calcula_BeneficiosCoste(arrayCosteCiudad, Vt)
             Cr = self.calcula_BeneficiosCoste(arrayCosteCarretera, Vt)
-            result = self.GustoCiudad * Cd   - self.GustoPoblado * Cr *carreteraConstruible
-            if result>0:
+            result = (
+                self.GustoCiudad * Cd - self.GustoPoblado * Cr * carreteraConstruible
+            )
+            if result > 0:
                 return BuildConstants.CARD
             else:
                 return BuildConstants.ROAD
-        
 
-    def get_max_material_for_compra_objetivo(self, compra_objetivo):
+    def get_most_requested_material_for_compra_objetivo(self, compra_objetivo):
         _, materiales_necesarios = self.materialesNecesarios(compra_objetivo)
-        materiales_necesarios_formato_lista = [(material_id, amount_of_material) for material_id, amount_of_material in enumerate(materiales_necesarios.get_array_ids())]
-        max_material_id, max_material_amount  = max(materiales_necesarios_formato_lista, key= lambda x: x[1])
-        if max_material_amount <= 0:
-            max_material_id = -1
-        return max_material_id, max_material_amount
+        materiales_necesarios_formato_lista = [
+            (material_id, amount_of_material)
+            for material_id, amount_of_material in enumerate(
+                materiales_necesarios.get_array_ids()
+            )
+        ]
+        # we need the minimum resource
+        material_id, material_amount = min(
+            materiales_necesarios_formato_lista, key=lambda x: x[1]
+        )
+        return material_id, material_amount
 
     def get_probability_for_materials_given_player_hands(self):
-        from_total_to_prob_given_a_hand = lambda lst: [l/sum(lst) for l in lst ] if sum(lst) > 0 else lst
-        return {k:from_total_to_prob_given_a_hand(v.resources.get_array_ids()) for k,v in self.player_hand_of_each_player.items()}
-
+        from_total_to_prob_given_a_hand = lambda lst: (
+            [l / sum(lst) for l in lst] if sum(lst) > 0 else lst
+        )
+        return {
+            k: from_total_to_prob_given_a_hand(v.resources.get_array_ids())
+            for k, v in self.player_hand_of_each_player.items()
+        }
 
     def check_thief_is_in_one_of_my_terrains(self):
         # Todos nuestros nodos
