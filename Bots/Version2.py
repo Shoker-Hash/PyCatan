@@ -166,22 +166,11 @@ class Version2(BotInterface):
         return any([terrain["has_thief"] for terrain in player_terrains])
 
     def on_having_more_than_7_materials_when_thief_is_called(self):
-        # Comprueba si tiene materiales para construir una ciudad. Si los tiene, descarta el resto que no le sirvan.
-        if self.hand.resources.has_this_more_materials(BuildConstants.CITY):
-            while self.hand.get_total() > 7:
-                if self.hand.resources.wool > 0:
-                    self.hand.remove_material(4, 1)
-
-                if self.hand.resources.cereal > 2:
-                    self.hand.remove_material(0, 1)
-                if self.hand.resources.mineral > 3:
-                    self.hand.remove_material(1, 1)
-
-                if self.hand.resources.clay > 0:
-                    self.hand.remove_material(2, 1)
-                if self.hand.resources.wood > 0:
-                    self.hand.remove_material(3, 1)
-        # Si no tiene materiales para hacer una ciudad descarta de manera aleatoria cartas de su mano
+        total_to_discard = self.hand.get_total() // 2
+        while self.hand.get_total() > total_to_discard:
+            #Remove most repeated card on your hand
+            max_id, max_amount =  max(enumerate(self.hand.resources.get_array_ids()), key=lambda x: x[1])
+            self.hand.remove_material(max_id, 1)
         return self.hand
 
     def on_moving_thief(self):
