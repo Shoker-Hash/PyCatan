@@ -150,21 +150,6 @@ class Version2(BotInterface):
                 return True
         return False
 
-    def check_thief_is_in_one_of_my_terrains(self):
-        # Todos nuestros nodos
-        player_nodes = [node for node in self.board.nodes if node["player"] == self.id]
-        # Todos nuestros terrenos
-        player_terrains_id = []
-        for node in player_nodes:
-            player_terrains_id.extend(self.board.__get_contacting_terrain__(node["id"]))
-        # Id -> Terrains
-        player_terrains = [
-            self.board.get_terrain_by_id(terrain_id)
-            for terrain_id in player_terrains_id
-        ]
-        # Si el ladrón está en alguno de nuestros terrenos
-        return any([terrain["has_thief"] for terrain in player_terrains])
-
     def on_having_more_than_7_materials_when_thief_is_called(self):
         total_to_discard = self.hand.get_total() // 2
         while self.hand.get_total() > total_to_discard:
@@ -621,3 +606,18 @@ class Version2(BotInterface):
                 max_result=score
                 result_i = i
         return i
+
+    def check_thief_is_in_one_of_my_terrains(self):
+        # Todos nuestros nodos
+        player_nodes = [node for node in self.board.nodes if node["player"] == self.id]
+        # Todos nuestros terrenos
+        player_terrains_id = []
+        for node in player_nodes:
+            player_terrains_id.extend(self.board.__get_contacting_terrain__(node["id"]))
+        # Id -> Terrains
+        player_terrains = [
+            self.board.get_terrain_by_id(terrain_id)
+            for terrain_id in player_terrains_id
+        ]
+        # Si el ladrón está en alguno de nuestros terrenos
+        return any([terrain["has_thief"] for terrain in player_terrains])
