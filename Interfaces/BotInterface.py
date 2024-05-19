@@ -69,7 +69,7 @@ class BotInterface:
         """
         return None
 
-    def on_build_phase(self, board_instance):
+    def on_build_phase(self, board_instance, dev_deck_instance):
         """
         Trigger para cuando empieza la fase de construcción. Devuelve un string indicando qué quiere construir
         :return: dict{'building': str, 'node_id': int, 'road_to': int/None}, None

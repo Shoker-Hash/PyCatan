@@ -87,7 +87,7 @@ class RandomBot(BotInterface):
             trade_offer = TradeOffer(gives, receives)
             return trade_offer
 
-    def on_build_phase(self, board_instance):
+    def on_build_phase(self, board_instance, dev_deck_instance):
         self.board = board_instance
 
         if len(self.development_cards_hand.check_hand()) and random.randint(0, 1):

@@ -748,7 +748,7 @@ class GameManager:
         :param player_id: int
         :return: dict{'building': str, 'node_id': int, 'road_to': int/None}, None
         """
-        return self.bot_manager.players[player_id]['player'].on_build_phase(self.board)
+        return self.bot_manager.players[player_id]['player'].on_build_phase(self.board, self.development_cards_deck)
 
     def get_board_nodes(self):
         """

@@ -312,7 +312,7 @@ class Version1(BotInterface):
         trade_offer = TradeOffer(gives, receives)
         return trade_offer
 
-    def on_build_phase(self, board_instance):
+    def on_build_phase(self, board_instance, dev_deck_instance):
         # Juega año de la cosecha si le faltan 2 o 1 materiales para completar una construcción
         # Juega construir carreteras si le da para camino más largo o con ello puede alcanzar un puerto (que no tenga)
         self.board = board_instance
