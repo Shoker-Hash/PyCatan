@@ -768,3 +768,5 @@ class Version2(BotInterface):
             k: from_total_to_prob_given_a_hand(v.resources.get_array_ids())
             for k, v in self.player_hand_of_each_player.items()
         }
+    def __str__(self):
+        return f"V2_{self.id}"

@@ -155,3 +155,6 @@ class RandomBot(BotInterface):
     def on_year_of_plenty_card_use(self):
         material, material2 = random.randint(0, 4), random.randint(0, 4)
         return {'material': material, 'material_2': material2}
+
+    def __str__(self) -> str:
+        return f"RB_{self.id}"

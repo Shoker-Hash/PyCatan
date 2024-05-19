@@ -239,8 +239,8 @@ class GameDirector:
             setup_object["P" + str(i)].append({"id": node_id, "road": road_to})
 
         self.trace_loader.current_trace["setup"] = setup_object
-        winner_id = self.game_loop(game_number)
-        return winner_id
+        winner_id, player_points = self.game_loop(game_number)
+        return winner_id, player_points
 
     def game_loop(self, game_number):
         """
@@ -253,9 +253,11 @@ class GameDirector:
         while not winner:
             game_object['round_' + str(self.game_manager.get_round())], winner = self.round_start(winner)
             self.game_manager.set_round(self.game_manager.get_round() + 1)
-
+        
+        player_points = []
         print('Game (' + str(game_number) + ') results')
         for i in range(4):
+            player_points.append(self.game_manager.get_players()[i]['victory_points'])
             if self.game_manager.get_players()[i]['victory_points'] > 9:
                 winner_id = i
             print('J' + str(i) + ': ' + str(self.game_manager.get_players()[i]['victory_points']) + ' (' +
@@ -265,4 +267,4 @@ class GameDirector:
         
         self.trace_loader.current_trace["game"] = game_object
         self.trace_loader.export_to_file(game_number)
-        return winner_id
+        return winner_id, player_points

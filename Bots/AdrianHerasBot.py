@@ -336,3 +336,6 @@ class AdrianHerasBot(BotInterface):
 
     def on_year_of_plenty_card_use(self):
         return {'material': self.year_of_plenty_material_one, 'material_2': self.year_of_plenty_material_two}
+
+    def __str__(self) -> str:
+        return f"AH_{self.id}"
