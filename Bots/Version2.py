@@ -154,30 +154,40 @@ class Version2(BotInterface):
         return self.hand
 
     def on_moving_thief(self):
-        # Bloquea un número 6 u 8 donde no tenga un pueblo, pero que tenga uno del rival
-        # Si no se dan las condiciones lo deja donde está, lo que hace que el GameManager lo ponga en un lugar aleatorio
-        terrain_with_thief_id = -1
-        for terrain in self.board.terrain:
-            if not terrain["has_thief"]:
-                if terrain["probability"] == 6 or terrain["probability"] == 8:
-                    nodes = self.board.__get_contacting_nodes__(terrain["id"])
-                    has_own_town = False
-                    has_enemy_town = False
-                    enemy = -1
-                    for node_id in nodes:
-                        if self.board.nodes[node_id]["player"] == self.id:
-                            has_own_town = True
-                            break
-                        if self.board.nodes[node_id]["player"] != -1:
-                            has_enemy_town = True
-                            enemy = self.board.nodes[node_id]["player"]
+        if self.compraObjetivo is None:
+            self.compraObjetivo = self.compra_objetivo(self.board)
+        requested_material_id, requested_material = (
+            self.get_most_required_material_for_compra_objetivo(self.compraObjetivo)
+        )
+        players_hand_materials_with_probability = (
+            self.get_probability_for_materials_given_player_hands()
+        )
 
-                    if not has_own_town and has_enemy_town:
-                        return {"terrain": terrain["id"], "player": enemy}
-            else:
-                terrain_with_thief_id = terrain["id"]
-
-        return {"terrain": terrain_with_thief_id, "player": -1}
+        # Crear una EDA dict {terrain_id:puntos}
+        # Sacar dnd más pueda putear
+        # Ver a quien puedo putear más
+        eda = self.__VTE__()
+        terrain_with_thief_id, values_for_putting_thief_here = max(
+            eda.items(), key=lambda x: x[1]
+        )
+        # Get all players ids adjacent to a terrain
+        player_ids = list(
+            filter(
+                lambda x: x != self.id,
+                self.board.get_players_adjacent_to_terrain(terrain_with_thief_id),
+            )
+        )
+        # List((int, list))
+        target_enemy_players = [
+            (player_id, prob_for_card)
+            for player_id, prob_for_card in players_hand_materials_with_probability.items()
+            if player_id in player_ids
+        ]
+        # Get the player with the most resources in that area
+        target_enemy_player_id, _ = max(
+            target_enemy_players, key=lambda x: x[1][requested_material_id]
+        )
+        return {"terrain": terrain_with_thief_id, "player": target_enemy_player_id}
 
     def on_turn_end(self):
         # Si tiene mano de cartas de desarrollo
@@ -390,9 +400,11 @@ class Version2(BotInterface):
         terrains = self.board.terrain
         res = {}
         for terrain in terrains:
-            prob_for_terrain = self.__CalculateProb__(self.board.__get_probability__(terrain["id"])) #get_prob * cal
+            prob_for_terrain = self.__CalculateProb__(
+                self.board.__get_probability__(terrain["id"])
+            )  # get_prob * cal
             val = 0
-            #Por cada nodo adjacente a un terreno
+            # Por cada nodo adjacente a un terreno
             node_ids_by_terrain_ids = self.board.__get_contacting_nodes__(terrain["id"])
             nodes = [self.board.get_nodes_by_id(id) for id in node_ids_by_terrain_ids]
             for node in nodes:
@@ -742,8 +754,17 @@ class Version2(BotInterface):
     def get_most_required_material_for_compra_objetivo(self, compra_objetivo):
         # Sacamos los materiales necesarios
         _, materiales_necesarios = self.materialesNecesarios(compra_objetivo)
-        #Most required material is the one with the LEAST amount -> min
+        # Most required material is the one with the LEAST amount -> min
         most_required_material_id, most_request_material_amount = min(
-            enumerate(materiales_necesarios), key=lambda x: x[1]
+            enumerate(materiales_necesarios.get_array_ids()), key=lambda x: x[1]
         )
         return most_required_material_id, most_request_material_amount
+
+    def get_probability_for_materials_given_player_hands(self):
+        from_total_to_prob_given_a_hand = lambda lst: (
+            [l / sum(lst) for l in lst] if sum(lst) > 0 else lst
+        )
+        return {
+            k: from_total_to_prob_given_a_hand(v.resources.get_array_ids())
+            for k, v in self.player_hand_of_each_player.items()
+        }
