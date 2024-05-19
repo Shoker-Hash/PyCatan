@@ -31,6 +31,7 @@ class Version2(BotInterface):
     turnoActual = 0
     compraObjetivo = None
     GustoMar = 1.5
+    lastMostNeededMaterialID = 1
     
     def __init__(self, bot_id):
         super().__init__(bot_id)
@@ -42,13 +43,46 @@ class Version2(BotInterface):
         :param incoming_trade_offer:
         :return:
         """
-        if incoming_trade_offer.gives.has_this_more_materials(
-            incoming_trade_offer.receives
-        ):
-            return True
-        else:
-            return False
-        # return super().on_trade_offer(incoming_trade_offer)
+        CO = self.compraObjetivo
+        if self.compraObjetivo is None:
+            CO = BuildConstants.TOWN
+        #Preparo un timo por si hiciera falta
+        matTimo = [0,0,0,0,0]
+        matTimo[self.lastMostNeededMaterialID] = 1
+        givesTimo = Materials(matTimo[0],matTimo[1],matTimo[2],matTimo[3],matTimo[4])
+        receivesTimo = Materials(matTimo[0]*2,matTimo[1]*2,matTimo[2]*2,matTimo[3]*2,matTimo[4]*2)
+        
+        total, materiales = self.materialesNecesarios(CO)
+        if total == 0: 
+            return TradeOffer(givesTimo, receivesTimo)
+        exceeded_mat = [(i,x) for i, x in enumerate(materiales.get_array_ids()) if x > 0]
+        needed_mat = [(i,-x) for i, x in enumerate(materiales.get_array_ids()) if x < 0]
+        most_need_id = self.pick_needed_material(materiales)
+        self.lastMostNeededMaterialID = most_need_id
+        array_gives = incoming_trade_offer.gives.get_array_ids()
+        array_receives = incoming_trade_offer.receives.get_array_ids()
+        total_give = sum(array_gives) # Lo que da el que me hace la ofertqa
+        total_receive = sum(array_receives) #Lo que le doy a el 
+        
+        
+        
+        #Si me intenta timar o no necesito nada, le timo de vuelta
+        if (total_receive-total_give>1): 
+            return TradeOffer(givesTimo, receivesTimo)
+            
+        # Si voy a perder un material que necesito, le intento timar:
+        for i,x in needed_mat:
+            if array_receives[i] > array_gives[i]:
+                return TradeOffer(givesTimo, receivesTimo)
+                
+                
+        #Si no me intenta timar, no pierdo nada que necesite pero el trato si que me da algo
+        # que necesite, entonces lo acepto. 
+        for i,x in enumerate(array_gives):
+            if i in [i[0] for i in needed_mat]:
+               return True
+        # Si no, le timo        
+        return TradeOffer(givesTimo, receivesTimo)
 
     def on_turn_start(self):
         
@@ -196,8 +230,35 @@ class Version2(BotInterface):
         """
         Se podría complicar mucho más la negociación, cambiando lo que hace en función de si tiene o no puertos y demás
         """
-        
-        return None
+        CO = self.compraObjetivo
+        if self.compraObjetivo is None:
+            CO = BuildConstants.TOWN
+        total, materiales = self.materialesNecesarios(CO)
+        exceeded_mat = [(i,x) for i, x in enumerate(materiales.get_array_ids()) if x > 0]
+        needed_mat = [(i,-x) for i, x in enumerate(materiales.get_array_ids()) if x < 0]
+        if total == 0 or not len(exceeded_mat):
+            # Como no necesito nada intento timar a los bots "estupidos"
+            matTimo = [0,0,0,0,0]
+            matTimo[self.lastMostNeededMaterialID] = 1
+            gives = Materials(matTimo[0],matTimo[1],matTimo[2],matTimo[3],matTimo[4])
+            receives = Materials(matTimo[0]*2,matTimo[1]*2,matTimo[2]*2,matTimo[3]*2,matTimo[4]*2)
+            return TradeOffer(gives, receives)
+        imin,cmin = min(needed_mat,key=lambda x:x[1])
+        imax, cmax = max(exceeded_mat, key=lambda x:x[1])
+        most_need_id = self.pick_needed_material(materiales)
+        self.lastMostNeededMaterialID = most_need_id
+        if cmax > 5:
+       	    #Si tengo mucho de algo, directamente lo tradeo con la banca. (Porque si me sobra mucho es que seguramente no me lo han querido cambiar)
+            return {'gives':imax, 'receives':most_need_id}
+        matGives = [0,0,0,0,0]
+        matReceives = [0,0,0,0,0]
+        matReceives[most_need_id] = 1
+        if cmax>3:
+            matGives[imax] = 1
+        matGives[imax] = matGives[imax] +1 
+        gives = Materials(matGives[0],matGives[1],matGives[2],matGives[3],matGives[4])
+        receives = Materials(matReceives[0],matReceives[1],matReceives[2],matReceives[3],matReceives[4])
+        return TradeOffer(gives, receives)
 
     def on_build_phase(self, board_instance):
         self.board = board_instance
