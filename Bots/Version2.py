@@ -386,6 +386,28 @@ class Version2(BotInterface):
             dictNode[node] = arrayTypes
         return dictNode
 
+    def __VTE__(self):
+        terrains = self.board.terrain
+        res = {}
+        for terrain in terrains:
+            prob_for_terrain = self.__CalculateProb__(self.board.__get_probability__(terrain["id"])) #get_prob * cal
+            val = 0
+            #Por cada nodo adjacente a un terreno
+            node_ids_by_terrain_ids = self.board.__get_contacting_nodes__(terrain["id"])
+            nodes = [self.board.get_nodes_by_id(id) for id in node_ids_by_terrain_ids]
+            for node in nodes:
+                mult = 0
+                if node["player"] >= 0:
+                    mult = 1
+                if node["has_city"]:
+                    mult = 2
+                if node["player"] == self.id:
+                    mult = -1 * mult
+
+                val += mult * prob_for_terrain
+            res[terrain["id"]] = val
+        return res
+
     def __CR__(self, nodes):
         arrayPlayer0 = [0, 0, 0, 0, 0]
         arrayPlayer1 = [0, 0, 0, 0, 0]
