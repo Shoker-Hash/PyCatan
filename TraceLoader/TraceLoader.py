@@ -18,11 +18,11 @@ class TraceLoader:
             os.makedirs(traces_path)
 
         # Cogemos el día y hora para ponerle el nombre a la carpeta a crear en trazas
-        today = str(datetime.today()).replace(':', '_')
+        self.today = str(datetime.today()).replace(':', '_')
 
         # Creamos la carpeta del día y hora de hoy para guardar todas las trazas ahí
         absolute_path = os.path.dirname(__file__)
-        relative_path = "../Traces/" + today
+        relative_path = "../Traces/" + self.today
         self.full_path = os.path.join(absolute_path, relative_path)
         os.makedirs(self.full_path)
         return
