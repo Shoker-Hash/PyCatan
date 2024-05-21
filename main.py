@@ -41,7 +41,7 @@ def main():
     info_to_df["ARMY"] = largest_army
     info_to_df["ROAD"] = longest_road
     df = pd.DataFrame(info_to_df)
-    df.to_csv("CSV/" + game_director.trace_loader.today + ".csv")
+    df.to_csv("CSV/" + game_director.trace_loader.today + ".csv", index=False)
     game_director.trace_loader.export_every_game_to_file()
     return
 
